@@ -106,7 +106,7 @@ class SerialGUI(QtWidgets.QWidget):
             try:
                 data = self.serialOut_q.get()
                 data =+ data  
-            except queue.Queue.Empty:
+            except queue.Empty:
                 data = "N/A"
             print("DEBUGGIMG" + data)
         self.serial_output.append(data)
@@ -114,7 +114,8 @@ class SerialGUI(QtWidgets.QWidget):
     
     def port_connect(self):
         if self.connctButton.text() == "Connect":
-            self.serth = SerialCom("COM5", 115200, self.serialInput_q, self.serialOut_q)   # Start serial thread
+            p = self.portComboBox.getCurrentPort()
+            self.serth = SerialCom(p, 115200, self.serialInput_q, self.serialOut_q)   # Start serial thread
             # self.serth = SerialCom("COM20", 115200, self.serialInput_q, self.serialOut_q)   # Start serial thread
             # self.serth = SerialCom("COM9", 9600, self.serialInput_q, self.serialOut_q)   # Start serial thread
             time.sleep(0.5)
@@ -212,9 +213,6 @@ class SerialCom:
         self.connected = False
         self.ser.close()
 
-        
-
-
 class LedIndicator(QtWidgets.QAbstractButton):
     scaledSize = 1000.0
 
@@ -306,17 +304,30 @@ class LedIndicator(QtWidgets.QAbstractButton):
 class SerialPortCombo(QtWidgets.QComboBox):
     def __init__(self) -> None:
         super().__init__()
+        self.portDict = dict()
         self.findPorts()
+
+    def showPopup(self):
+        super().showPopup()
+        self.findPorts()
+
     def findPorts(self):
         dummy = False
         if not dummy:
             dev = []
+            self.portDict = dict()
+            self.clear()
             ports = serial.tools.list_ports.comports()
             for port, desc, hwid in sorted(ports):
-                dev.append("{}: {} [{}]".format(port, desc, hwid))
+                dev_hwinfo = "{}: {} [{}]".format(port, desc, hwid)
+                dev.append(dev_hwinfo)
+                self.portDict[dev_hwinfo] = {"port": port, "desc": desc, "hwid": hwid}
             self.addItems(dev)
         else:
             self.addItems(["1", "2", "3"] )
+
+    def getCurrentPort(self):
+        return self.portDict[self.currentText()]["port"]
     
 
     
