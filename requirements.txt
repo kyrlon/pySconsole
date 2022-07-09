@@ -1,6 +1,4 @@
 PyQt5
-python-vlc
-ffmpeg-python
 numpy
 pyqtgraph
 pyserial

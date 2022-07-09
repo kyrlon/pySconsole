@@ -44,6 +44,7 @@ class SerialGUI(QtWidgets.QWidget):
 
         # set serial output from the device
         self.serial_output = QtWidgets.QTextBrowser()
+        # self.serial_output.setStyleSheet("background-color: blue;")
         self.serial_output.setAcceptRichText(True)
         self.serial_output.setOpenExternalLinks(True)
 
@@ -100,18 +101,22 @@ class SerialGUI(QtWidgets.QWidget):
             self.line_edit.clear()
 
     def console_ouput(self): #TODO: FIX LAG OF output
-        try:
-            data = self.serialOut_q.get()  
-        except queue.Queue.Empty:
-            data = "N/A"
-        print("DEBUGGIMG" + data)
+        data = ""
+        while not self.serialOut_q.empty():
+            try:
+                data = self.serialOut_q.get()
+                data =+ data  
+            except queue.Queue.Empty:
+                data = "N/A"
+            print("DEBUGGIMG" + data)
         self.serial_output.append(data)
 
     
     def port_connect(self):
         if self.connctButton.text() == "Connect":
+            self.serth = SerialCom("COM5", 115200, self.serialInput_q, self.serialOut_q)   # Start serial thread
             # self.serth = SerialCom("COM20", 115200, self.serialInput_q, self.serialOut_q)   # Start serial thread
-            self.serth = SerialCom("COM9", 9600, self.serialInput_q, self.serialOut_q)   # Start serial thread
+            # self.serth = SerialCom("COM9", 9600, self.serialInput_q, self.serialOut_q)   # Start serial thread
             time.sleep(0.5)
             self.serth.Start()
             self.led_indicator.setChecked(True)
@@ -171,7 +176,6 @@ class SerialCom:
                 cmd = (cmd + "\r")
                 cmd = cmd.encode()
                 _ = self.ser.write(cmd)
-
          
     def readData(self):                    # Write incoming serial data to screen
         while self._loop:
@@ -179,7 +183,9 @@ class SerialCom:
                 # s = self.ser.read(self.ser.in_waiting or 1)
                 s = self.ser.readline()
                 if s:                                       # Get data from serial port
-                    self.rxq.put(bytes_str(s))               # ..and convert to string
+                    data = bytes_str(s)               # ..and convert to string
+                    if data != '':
+                        self.rxq.put(data)               # ..and convert to string
                     display(s)
          
     def Start(self):                          # Run serial reader thread
