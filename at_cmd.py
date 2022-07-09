@@ -23,17 +23,20 @@ class SerialGUI(QtWidgets.QWidget):
         # Top Group
         
         #set combo box for serial ports
-        # self.portComboBox = QtWidgets.QComboBox()
         self.portComboBox = SerialPortCombo()
-        self.selectportlbl = QtWidgets.QLabel("Select port:")
+        self.baudComboBox = BaudRateCombo()
+        self.selectPortLbl = QtWidgets.QLabel("Port:")
+        self.baudRateLbl = QtWidgets.QLabel("Baudrate:")
         self.connctButton = QtWidgets.QPushButton("Connect")
         self.connctButton.clicked.connect(self.port_connect)
 
         # Sets layout for GUI header/combo
-        self.header_layout = QtWidgets.QHBoxLayout()
-        self.header_layout.addWidget(self.selectportlbl,0)
-        self.header_layout.addWidget(self.portComboBox,1)
-        self.header_layout.addWidget(self.connctButton,2)
+        self.header_layout = QtWidgets.QGridLayout() #TODO: fix weird layout scheme
+        self.header_layout.addWidget(self.selectPortLbl, 0, 0) 
+        self.header_layout.addWidget(self.portComboBox, 0, 1)
+        self.header_layout.addWidget(self.connctButton, 0, 2)
+        self.header_layout.addWidget(self.baudRateLbl, 1, 0) 
+        self.header_layout.addWidget(self.baudComboBox, 1, 1) 
 
         header_layout_wrapper = QtWidgets.QWidget()
         header_layout_wrapper.setLayout(self.header_layout)
@@ -101,31 +104,26 @@ class SerialGUI(QtWidgets.QWidget):
             self.line_edit.clear()
 
     def console_ouput(self): #TODO: FIX LAG OF output
-        data = ""
         while not self.serialOut_q.empty():
             try:
                 data = self.serialOut_q.get()
-                data =+ data  
             except queue.Empty:
                 data = "N/A"
-            print("DEBUGGIMG" + data)
-        self.serial_output.append(data)
+            # print("DEBUGGIMG" + data)
+            self.serial_output.append(data)
 
-    
     def port_connect(self):
-        if self.connctButton.text() == "Connect":
+        if self.connctButton.text() == "Connect": #TODO: fix issue of serial errror
             p = self.portComboBox.getCurrentPort()
             self.serth = SerialCom(p, 115200, self.serialInput_q, self.serialOut_q)   # Start serial thread
             # self.serth = SerialCom("COM20", 115200, self.serialInput_q, self.serialOut_q)   # Start serial thread
             # self.serth = SerialCom("COM9", 9600, self.serialInput_q, self.serialOut_q)   # Start serial thread
-            time.sleep(0.5)
             self.serth.Start()
             self.led_indicator.setChecked(True)
             self.connctButton.setText("Disconnect")
         else:
             if self.serth.connected:
                 self.serth.Stop()
-                self.serth = None
             self.connctButton.setText("Connect")
             self.led_indicator.setChecked(False)
 
@@ -212,6 +210,7 @@ class SerialCom:
         self._loop = False
         self.connected = False
         self.ser.close()
+        self.ser = None
 
 class LedIndicator(QtWidgets.QAbstractButton):
     scaledSize = 1000.0
@@ -301,11 +300,17 @@ class LedIndicator(QtWidgets.QAbstractButton):
     def offColor2(self, color):
         self.off_color_2 = color
 
+class BaudRateCombo(QtWidgets.QComboBox):
+    def __init__(self) -> None:
+        super().__init__()
+        self.baudlist = ["2400", "4800", "9600", "19200", "38400", "57600", "115200"]
+        self.addItems(self.baudlist)
+
+
 class SerialPortCombo(QtWidgets.QComboBox):
     def __init__(self) -> None:
         super().__init__()
-        self.portDict = dict()
-        self.findPorts()
+        self.setEditable(True)
 
     def showPopup(self):
         super().showPopup()
