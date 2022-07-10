@@ -52,7 +52,9 @@ class SerialGUI(QtWidgets.QWidget):
         self.serial_output.setOpenExternalLinks(True)
 
         #set history log
-        self.history_log = QtWidgets.QListWidget()
+        self.history_log = HistoryList()
+        self.history_log.itemDoubleClicked.connect(self.history_item_selected)
+        self.history_log.returnPressed.connect(self.history_item_selected)
         self.history_log.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection) #TODO add option to save log/restore
 
         # set layout for serial output and history #TODO: add checkbox for history log
@@ -102,6 +104,8 @@ class SerialGUI(QtWidgets.QWidget):
             txt = "Please connect serial device!!"
             self.serial_output.append(txt)
             self.line_edit.clear()
+    def history_item_selected(self):
+        self.line_edit.setText(self.history_log.currentItem().text())
 
     def console_ouput(self): #TODO: FIX LAG OF output
         while not self.serialOut_q.empty():
@@ -305,6 +309,17 @@ class BaudRateCombo(QtWidgets.QComboBox):
         super().__init__()
         self.baudlist = ["2400", "4800", "9600", "19200", "38400", "57600", "115200"]
         self.addItems(self.baudlist)
+
+class HistoryList(QtWidgets.QListWidget):
+    returnPressed = QtCore.pyqtSignal()
+    def __init__(self) -> None:
+        super().__init__()
+    
+    def keyPressEvent(self, ev):
+        super().keyPressEvent(ev)
+        if ev.key() in (QtCore.Qt.Key_Enter, QtCore.Qt.Key_Return):
+            self.returnPressed.emit()
+        
 
 
 class SerialPortCombo(QtWidgets.QComboBox):
