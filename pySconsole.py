@@ -18,7 +18,6 @@ class SerialGUI(QtWidgets.QWidget):
         self.serialInput_q, self.serialOut_q = queue.Queue(), queue.Queue() 
         
         self.setWindowTitle('Serial232')
-        self.setWindowIcon(QtGui.QIcon('gtri_logo.png'))
         
         # Top Group
         
@@ -47,7 +46,7 @@ class SerialGUI(QtWidgets.QWidget):
 
         # set serial output from the device
         self.serial_output = QtWidgets.QTextBrowser()
-        # self.serial_output.setStyleSheet("background-color: blue;")
+        self.serial_output.setStyleSheet("background-color: black; color: white")
         self.serial_output.setAcceptRichText(True)
         self.serial_output.setOpenExternalLinks(True)
 
@@ -117,9 +116,10 @@ class SerialGUI(QtWidgets.QWidget):
             self.serial_output.append(data)
 
     def port_connect(self):
-        if self.connctButton.text() == "Connect": #TODO: fix issue of serial errror
+        if self.connctButton.text() == "Connect": #TODO: fix issue of serial errror on reconection
             p = self.portComboBox.getCurrentPort()
-            self.serth = SerialCom(p, 115200, self.serialInput_q, self.serialOut_q)   # Start serial thread
+            b = int(self.baudComboBox.currentText())
+            self.serth = SerialCom(p, b, self.serialInput_q, self.serialOut_q)   # Start serial thread
             # self.serth = SerialCom("COM20", 115200, self.serialInput_q, self.serialOut_q)   # Start serial thread
             # self.serth = SerialCom("COM9", 9600, self.serialInput_q, self.serialOut_q)   # Start serial thread
             self.serth.Start()
@@ -321,7 +321,6 @@ class HistoryList(QtWidgets.QListWidget):
             self.returnPressed.emit()
         
 
-
 class SerialPortCombo(QtWidgets.QComboBox):
     def __init__(self) -> None:
         super().__init__()
@@ -348,8 +347,6 @@ class SerialPortCombo(QtWidgets.QComboBox):
 
     def getCurrentPort(self):
         return self.portDict[self.currentText()]["port"]
-    
-
     
 
 
