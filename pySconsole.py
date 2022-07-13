@@ -307,6 +307,7 @@ class LedIndicator(QtWidgets.QAbstractButton):
 class BaudRateCombo(QtWidgets.QComboBox):
     def __init__(self) -> None:
         super().__init__()
+        self.setEditable(True)
         self.baudlist = ["2400", "4800", "9600", "19200", "38400", "57600", "115200"]
         self.addItems(self.baudlist)
 
@@ -324,7 +325,7 @@ class HistoryList(QtWidgets.QListWidget):
 class SerialPortCombo(QtWidgets.QComboBox):
     def __init__(self) -> None:
         super().__init__()
-        self.setEditable(True)
+        self.findPorts()
 
     def showPopup(self):
         super().showPopup()
@@ -351,82 +352,13 @@ class SerialPortCombo(QtWidgets.QComboBox):
 
 
 if __name__ == "__main__":
-    one = True
-    t = False
-    # func = True
-    # zzz = True
-    if one:
-        current_port = 51234
-        app = QtWidgets.QApplication([])
-        player = SerialGUI()
-        screensize = app.desktop().availableGeometry().size()
-        # player.resize(screensize)
-        player.show()
+    current_port = 51234
+    app = QtWidgets.QApplication([])
+    player = SerialGUI()
+    screensize = app.desktop().availableGeometry().size()
+    # player.resize(screensize)
+    player.show()
 
-        exit(app.exec_())
+    exit(app.exec_())
     
-    if t:
-
-        ports = serial.tools.list_ports.comports()
-
-        for port, desc, hwid in sorted(ports):
-                print("{}: {} [{}]".format(port, desc, hwid))
-    if zzz:
-      while True:
-
-        with serial.Serial(port="COM20",baudrate=115200) as s:
-            print(1)
-            cmd = input("Enter cmd: ")
-
-            if not cmd:
-
-                continue
-
-            cmd = (cmd + "\r")
-
-            cmd = cmd.encode()
-
-            _ = s.write(cmd)
-
-            print(s.readline())
-
-            # print(s.readline())
-
-    if func:
-        def display(s):
-            if not hexmode:
-                # print(textdump(str(s)))
-                sys.stdout.write(textdump(str(s)))
-            else:
-                print(hexdump(s) + ' ')
-
-        txq = queue.Queue()
-        def sendData(txq,s):                   # Write outgoing data to serial port if open
-            txq.put(s)                     # ..using a queue to sync with reader thread
-         
-        def readData(s):                    # Write incoming serial data to screen
-            display(s)
-            print("ok")
-
-        try:
-            ser = serial.Serial(port="COM20", baudrate=9600)
-            time.sleep(SER_TIMEOUT*1.2)
-            ser.flushInput()
-            print(1)
-        except Exception as e:
-            ser = None
-            print(e)
-        if not ser:
-            print("Can't open port")
-            running = False
-
-        while running:
-            s = ser.read(ser.in_waiting or 1)
-            if s:                                       # Get data from serial port
-                readData(bytes_str(s))               # ..and convert to string
-            if not txq.empty():
-                txd = str(txq.get())               # If Tx data in queue, write to serial port
-                ser.write(str_bytes(txd))
-        if ser:                                    # Close serial port when thread finished
-            ser.close()
-            ser = None
+    
