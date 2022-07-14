@@ -97,7 +97,7 @@ class SerialGUI(QtWidgets.QWidget):
         if self.led_indicator.isChecked(): 
             self.serialInput_q.put(self.line_edit.text())
             self.history_log.addItem(self.line_edit.text())
-            self.console_ouput()
+            # self.console_ouput()
             self.line_edit.clear()
         else:
             txt = "Please connect serial device!!"
@@ -107,11 +107,13 @@ class SerialGUI(QtWidgets.QWidget):
         self.line_edit.setText(self.history_log.currentItem().text())
 
     def console_ouput(self): #TODO: FIX LAG OF output
-        while not self.serialOut_q.empty():
+        while True:
+            if not self.serth.running:
+                break
             try:
                 data = self.serialOut_q.get()
             except queue.Empty:
-                data = "N/A"
+                continue
             # print("DEBUGGIMG" + data)
             self.serial_output.append(data)
 
@@ -120,11 +122,11 @@ class SerialGUI(QtWidgets.QWidget):
             p = self.portComboBox.getCurrentPort()
             b = int(self.baudComboBox.currentText())
             self.serth = SerialCom(p, b, self.serialInput_q, self.serialOut_q)   # Start serial thread
-            # self.serth = SerialCom("COM20", 115200, self.serialInput_q, self.serialOut_q)   # Start serial thread
-            # self.serth = SerialCom("COM9", 9600, self.serialInput_q, self.serialOut_q)   # Start serial thread
             self.serth.Start()
             self.led_indicator.setChecked(True)
             self.connctButton.setText("Disconnect")
+            self._console_t = threading.Thread(target=self.console_ouput)
+            self._console_t.start()
         else:
             if self.serth.connected:
                 self.serth.Stop()
@@ -165,15 +167,21 @@ class SerialCom:
         self.running = False
         self.connected = False
         self._loop = True
-        self._read_thread = threading.Thread(target=self.readData, daemon=True)
-        # self._read_thread = QtCore.QThread(target=self.readData, daemon=True)
-        self._send_thread = threading.Thread(target=self.sendData, daemon=True)
-        self._read_thread.start()
-        self._send_thread.start()
+        self.PYQT = True
+        self.ser = None
+        if not self.PYQT:
+            self._read_thread = threading.Thread(target=self.readData, daemon=True)
+            # self._read_thread = QtCore.QThread(target=self.readData, daemon=True)
+            self._send_thread = threading.Thread(target=self.sendData, daemon=True)
+            self._read_thread.start()
+            self._send_thread.start()
+        else:
+            self.qread = self.QReadThread(self.ser, self.rxq)
+            self.qsend = self.QReadThread(self.ser, self.txq)
  
     def sendData(self):                   # Write outgoing data to serial port if open
         while self._loop:
-            while self.running:
+            while self.running and self.ser:
                 cmd = self.txq.get()                     # ..using a queue to sync with reader thread
                 # s = self.ser.read(self.ser.in_waiting or 1)
                 cmd = (cmd + "\r")
@@ -182,7 +190,7 @@ class SerialCom:
          
     def readData(self):                    # Write incoming serial data to screen
         while self._loop:
-            while self.running:
+            while self.running and self.ser:
                 # s = self.ser.read(self.ser.in_waiting or 1)
                 s = self.ser.readline()
                 if s:                                       # Get data from serial port
@@ -208,6 +216,11 @@ class SerialCom:
             self.running = False
         self.connected = True
         print(2)
+        if self.PYQT:
+            self.qread.start()
+            self.qsend.start()
+            print(9)
+
 
     def Stop(self):
         self.running = False
@@ -215,7 +228,61 @@ class SerialCom:
         self.connected = False
         self.ser.close()
         self.ser = None
+        if self.PYQT:
+            self.qread.Qstop()
+            self.qsend.Qstop()
+        
+    class QReadThread(QtCore.QThread):
+        def __init__(self, serial_dev, rxq) -> None:
+            super().__init__()
+            self._loop = True
+            self._running = False
+            self.serial_dev = serial_dev
+            self.rxq = rxq
+        
+        def run(self):
+            self.readData()
+            self._running = True
+            print("read")
 
+        def readData(self):                    # Write incoming serial data to screen
+            while self._loop:
+                while self._running:
+                    # s = self.ser.read(self.ser.in_waiting or 1)
+                    s = self.serial_dev.readline()
+                    if s:                                       # Get data from serial port
+                        data = bytes_str(s)               # ..and convert to string
+                        if data != '':
+                            self.rxq.put(data)               # ..and convert to string
+                        display(s)
+        def Qstop(self):
+            self._loop = False
+            self._running = False
+
+    class QSendThread(QtCore.QThread):
+        def __init__(self, serial_dev, txq) -> None:
+            super().__init__()
+            self.loop = True
+            self.running = False
+            self.serial_dev = serial_dev
+            self.rxq = txq
+            super().__init__()
+
+        def run(self) -> None:
+            self.sendData()
+            self._running = True
+        def sendData(self):                   # Write outgoing data to serial port if open
+            while self._loop:
+                while self.running and self.ser:
+                    cmd = self.txq.get()                     # ..using a queue to sync with reader thread
+                    # s = self.ser.read(self.ser.in_waiting or 1)
+                    cmd = (cmd + "\r")
+                    cmd = cmd.encode()
+                    _ = self.ser.write(cmd)
+
+        def Qstop(self):
+            self._loop = False
+            self._running = False
 class LedIndicator(QtWidgets.QAbstractButton):
     scaledSize = 1000.0
 
@@ -321,7 +388,6 @@ class HistoryList(QtWidgets.QListWidget):
         if ev.key() in (QtCore.Qt.Key_Enter, QtCore.Qt.Key_Return):
             self.returnPressed.emit()
         
-
 class SerialPortCombo(QtWidgets.QComboBox):
     def __init__(self) -> None:
         super().__init__()
@@ -349,7 +415,6 @@ class SerialPortCombo(QtWidgets.QComboBox):
     def getCurrentPort(self):
         return self.portDict[self.currentText()]["port"]
     
-
 
 if __name__ == "__main__":
     current_port = 51234
