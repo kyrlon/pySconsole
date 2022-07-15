@@ -107,15 +107,39 @@ class SerialGUI(QtWidgets.QWidget):
         self.line_edit.setText(self.history_log.currentItem().text())
 
     def console_ouput(self): #TODO: FIX LAG OF output
-        while True:
-            if not self.serth.running:
-                break
-            try:
-                data = self.serialOut_q.get()
-            except queue.Empty:
-                continue
-            # print("DEBUGGIMG" + data)
-            self.serial_output.append(data)
+        # while True:
+        if not self.serth.running:
+            ...
+        try:
+            data = self.serialOut_q.get()
+        except queue.Empty:
+            ...
+        # print("DEBUGGIMG" + data)
+        self.serial_output.append(data)
+
+    class ConsoleOutput(QtCore.QThread):
+        class_attribute_s = QtCore.pyqtSignal()
+        def __init__(self, serial_dev, output, qoutput) -> None:
+            super().__init__()
+            self.class_attribute_s.emit()
+            self.loop = True
+            self.running = False
+            self.serial_dev = serial_dev
+            self.output = output
+            self.qoutput = qoutput
+            super().__init__()
+
+        def run(self) -> None:
+            while True:
+                if not self.serial_dev.running:
+                    break
+                try:
+                    data = self.qoutput.get()
+                except queue.Empty:
+                    continue
+                # print("DEBUGGIMG" + data)
+                self.output.append(data)
+
 
     def port_connect(self):
         if self.connctButton.text() == "Connect": #TODO: fix issue of serial errror on reconection
@@ -125,7 +149,9 @@ class SerialGUI(QtWidgets.QWidget):
             self.serth.Start()
             self.led_indicator.setChecked(True)
             self.connctButton.setText("Disconnect")
-            self._console_t = threading.Thread(target=self.console_ouput)
+            # self._console_t = threading.Thread(target=self.console_ouput)
+            # self.console_ouput()
+            self._console_t = self.ConsoleOutput(self.serth, self.serial_output, self.serialOut_q)
             self._console_t.start()
         else:
             if self.serth.connected:
@@ -161,13 +187,16 @@ def display(s):
 # Thread to handle incoming & outgoing serial data
 class SerialCom:
     def __init__(self, portname, baudrate, serialInput, serialOut): # Initialise with serial port details
+        super().__init__()
+        # self.class_attribute_s.connect(self.sendData)
+        # self.class_attribute_r.connect(self.readData)
         self.portname, self.baudrate = portname, baudrate
         self.txq = serialInput
         self.rxq = serialOut
         self.running = False
         self.connected = False
         self._loop = True
-        self.PYQT = True
+        self.PYQT = False
         self.ser = None
         if not self.PYQT:
             self._read_thread = threading.Thread(target=self.readData, daemon=True)
@@ -283,6 +312,7 @@ class SerialCom:
         def Qstop(self):
             self._loop = False
             self._running = False
+
 class LedIndicator(QtWidgets.QAbstractButton):
     scaledSize = 1000.0
 
