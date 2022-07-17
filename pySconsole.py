@@ -1,6 +1,7 @@
 from PyQt5 import QtGui, QtWidgets, QtCore
 from PyQt5.QtCore import pyqtProperty
 import serial, time, sys
+import json
 import queue, threading
 import serial.tools.list_ports
 
@@ -10,6 +11,7 @@ class SerialGUI(QtWidgets.QWidget):
     def __init__(self):
         super().__init__()
         self.__init_ui()
+        self.thread_status = False
 
     def closeEvent(self, event):
         super().closeEvent(event)
@@ -49,6 +51,11 @@ class SerialGUI(QtWidgets.QWidget):
         self.serial_output.setStyleSheet("background-color: black; color: white")
         self.serial_output.setAcceptRichText(True)
         self.serial_output.setOpenExternalLinks(True)
+        self.serth = None
+        self._console_t = self.ConsoleOutput(self.serth, self.serial_output, self.serialOut_q)
+        self._console_t.data_append.connect(self.serial_output.append)
+        self._console_t.start()
+
 
         #set history log
         self.history_log = HistoryList()
@@ -76,11 +83,9 @@ class SerialGUI(QtWidgets.QWidget):
         self.lower_layout.addWidget(self.line_label)
         self.lower_layout.addWidget(self.led_indicator)
 
-
         lower_layout_wrapper = QtWidgets.QWidget()
         lower_layout_wrapper.setLayout(self.lower_layout)
         lower_layout_wrapper.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
-
 
         # Sets full GUI layout
         gui_layout = QtWidgets.QVBoxLayout()
@@ -97,7 +102,6 @@ class SerialGUI(QtWidgets.QWidget):
         if self.led_indicator.isChecked(): 
             self.serialInput_q.put(self.line_edit.text())
             self.history_log.addItem(self.line_edit.text())
-            # self.console_ouput()
             self.line_edit.clear()
         else:
             txt = "Please connect serial device!!"
@@ -106,22 +110,10 @@ class SerialGUI(QtWidgets.QWidget):
     def history_item_selected(self):
         self.line_edit.setText(self.history_log.currentItem().text())
 
-    def console_ouput(self): #TODO: FIX LAG OF output
-        # while True:
-        if not self.serth.running:
-            ...
-        try:
-            data = self.serialOut_q.get()
-        except queue.Empty:
-            ...
-        # print("DEBUGGIMG" + data)
-        self.serial_output.append(data)
-
     class ConsoleOutput(QtCore.QThread):
-        class_attribute_s = QtCore.pyqtSignal()
+        data_append = QtCore.pyqtSignal(object)
         def __init__(self, serial_dev, output, qoutput) -> None:
             super().__init__()
-            self.class_attribute_s.emit()
             self.loop = True
             self.running = False
             self.serial_dev = serial_dev
@@ -131,34 +123,28 @@ class SerialGUI(QtWidgets.QWidget):
 
         def run(self) -> None:
             while True:
-                if not self.serial_dev.running:
-                    break
                 try:
                     data = self.qoutput.get()
-                except queue.Empty:
+                    self.data_append.emit(data)
+                except:
                     continue
-                # print("DEBUGGIMG" + data)
-                self.output.append(data)
-
 
     def port_connect(self):
         if self.connctButton.text() == "Connect": #TODO: fix issue of serial errror on reconection
             p = self.portComboBox.getCurrentPort()
             b = int(self.baudComboBox.currentText())
-            self.serth = SerialCom(p, b, self.serialInput_q, self.serialOut_q)   # Start serial thread
-            self.serth.Start()
+            if not self.thread_status:
+                self.thread_status = True
+                self.serth = SerialCom(p, b, self.serialInput_q, self.serialOut_q)   # Start serial thread
+                self.serth.Start()
             self.led_indicator.setChecked(True)
             self.connctButton.setText("Disconnect")
-            # self._console_t = threading.Thread(target=self.console_ouput)
-            # self.console_ouput()
-            self._console_t = self.ConsoleOutput(self.serth, self.serial_output, self.serialOut_q)
-            self._console_t.start()
         else:
             if self.serth.connected:
                 self.serth.Stop()
+                self.thread_status = False
             self.connctButton.setText("Connect")
             self.led_indicator.setChecked(False)
-
 
 # Convert a string to bytes
 def str_bytes(s):
@@ -188,8 +174,6 @@ def display(s):
 class SerialCom:
     def __init__(self, portname, baudrate, serialInput, serialOut): # Initialise with serial port details
         super().__init__()
-        # self.class_attribute_s.connect(self.sendData)
-        # self.class_attribute_r.connect(self.readData)
         self.portname, self.baudrate = portname, baudrate
         self.txq = serialInput
         self.rxq = serialOut
@@ -198,21 +182,15 @@ class SerialCom:
         self._loop = True
         self.PYQT = False
         self.ser = None
-        if not self.PYQT:
-            self._read_thread = threading.Thread(target=self.readData, daemon=True)
-            # self._read_thread = QtCore.QThread(target=self.readData, daemon=True)
-            self._send_thread = threading.Thread(target=self.sendData, daemon=True)
-            self._read_thread.start()
-            self._send_thread.start()
-        else:
-            self.qread = self.QReadThread(self.ser, self.rxq)
-            self.qsend = self.QReadThread(self.ser, self.txq)
- 
+        self._read_thread = threading.Thread(target=self.readData, daemon=True)
+        self._send_thread = threading.Thread(target=self.sendData, daemon=True)
+        self._read_thread.start()
+        self._send_thread.start()
+        
     def sendData(self):                   # Write outgoing data to serial port if open
         while self._loop:
             while self.running and self.ser:
                 cmd = self.txq.get()                     # ..using a queue to sync with reader thread
-                # s = self.ser.read(self.ser.in_waiting or 1)
                 cmd = (cmd + "\r")
                 cmd = cmd.encode()
                 _ = self.ser.write(cmd)
@@ -220,7 +198,6 @@ class SerialCom:
     def readData(self):                    # Write incoming serial data to screen
         while self._loop:
             while self.running and self.ser:
-                # s = self.ser.read(self.ser.in_waiting or 1)
                 s = self.ser.readline()
                 if s:                                       # Get data from serial port
                     data = bytes_str(s)               # ..and convert to string
@@ -245,11 +222,6 @@ class SerialCom:
             self.running = False
         self.connected = True
         print(2)
-        if self.PYQT:
-            self.qread.start()
-            self.qsend.start()
-            print(9)
-
 
     def Stop(self):
         self.running = False
@@ -257,62 +229,7 @@ class SerialCom:
         self.connected = False
         self.ser.close()
         self.ser = None
-        if self.PYQT:
-            self.qread.Qstop()
-            self.qsend.Qstop()
         
-    class QReadThread(QtCore.QThread):
-        def __init__(self, serial_dev, rxq) -> None:
-            super().__init__()
-            self._loop = True
-            self._running = False
-            self.serial_dev = serial_dev
-            self.rxq = rxq
-        
-        def run(self):
-            self.readData()
-            self._running = True
-            print("read")
-
-        def readData(self):                    # Write incoming serial data to screen
-            while self._loop:
-                while self._running:
-                    # s = self.ser.read(self.ser.in_waiting or 1)
-                    s = self.serial_dev.readline()
-                    if s:                                       # Get data from serial port
-                        data = bytes_str(s)               # ..and convert to string
-                        if data != '':
-                            self.rxq.put(data)               # ..and convert to string
-                        display(s)
-        def Qstop(self):
-            self._loop = False
-            self._running = False
-
-    class QSendThread(QtCore.QThread):
-        def __init__(self, serial_dev, txq) -> None:
-            super().__init__()
-            self.loop = True
-            self.running = False
-            self.serial_dev = serial_dev
-            self.rxq = txq
-            super().__init__()
-
-        def run(self) -> None:
-            self.sendData()
-            self._running = True
-        def sendData(self):                   # Write outgoing data to serial port if open
-            while self._loop:
-                while self.running and self.ser:
-                    cmd = self.txq.get()                     # ..using a queue to sync with reader thread
-                    # s = self.ser.read(self.ser.in_waiting or 1)
-                    cmd = (cmd + "\r")
-                    cmd = cmd.encode()
-                    _ = self.ser.write(cmd)
-
-        def Qstop(self):
-            self._loop = False
-            self._running = False
-
 class LedIndicator(QtWidgets.QAbstractButton):
     scaledSize = 1000.0
 
@@ -401,22 +318,71 @@ class LedIndicator(QtWidgets.QAbstractButton):
     def offColor2(self, color):
         self.off_color_2 = color
 
-class BaudRateCombo(QtWidgets.QComboBox):
+class BaudRateCombo(QtWidgets.QComboBox): #TODO: context menu for adding items
     def __init__(self) -> None:
         super().__init__()
-        self.setEditable(True)
+        self.setEditable(False)
         self.baudlist = ["2400", "4800", "9600", "19200", "38400", "57600", "115200"]
         self.addItems(self.baudlist)
+
+    def contextMenuEvent(self,event):
+        super().contextMenuEvent(event)
+        print("Right Button Clicked")
+        entry = self.getCustomBaud()
+        if entry:
+            self.baudlist.append(entry)
+            self.baudlist.sort(key=int)
+            self.clear()
+            self.addItems(self.baudlist)
+    
+    def getCustomBaud(self): #TODO: modify for adjusting title
+    #   num,ok = QtWidgets.QInputDialog.getInt(self,"Custom BaudRate","Enter a BaudRate value")
+        num,ok = BaudRateDialog().getInt(self,"Custom BaudRate           ","Enter a BaudRate value")
+		
+        if ok:
+            return str(num)
+        else:
+            return ""
+
 
 class HistoryList(QtWidgets.QListWidget):
     returnPressed = QtCore.pyqtSignal()
     def __init__(self) -> None:
         super().__init__()
+        self.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
+        self.setMouseTracking(True)
+        self.itemEntered.connect(self.__showToolTip)
     
     def keyPressEvent(self, ev):
         super().keyPressEvent(ev)
         if ev.key() in (QtCore.Qt.Key_Enter, QtCore.Qt.Key_Return):
             self.returnPressed.emit()
+
+    def addItem(self, aitem) -> None:
+        item = ''
+        text = ''
+        if isinstance(aitem, str):
+            item = QtWidgets.QListWidgetItem()
+            text = aitem
+            item.setText(text)
+        elif isinstance(aitem, QtWidgets.QListWidgetItem):
+            item = aitem
+            text = item.text()
+        self.setItemWidget(item, QtWidgets.QWidget())
+        super().addItem(item)
+
+    def __showToolTip(self, item: QtWidgets.QListWidgetItem):
+        text = item.text()
+        text_width = self.fontMetrics().boundingRect(text).width()
+        width = self.width()
+        info = {"time":"1234", "output":"blah"}
+        info = json.dumps(info, indent=4)
+        # item.setToolTip(text)
+        item.setToolTip(info)
+        # if text_width > width:
+        #     item.setToolTip(text)
+        # else:
+        #     item.setToolTip('')
         
 class SerialPortCombo(QtWidgets.QComboBox):
     def __init__(self) -> None:
@@ -444,15 +410,48 @@ class SerialPortCombo(QtWidgets.QComboBox):
 
     def getCurrentPort(self):
         return self.portDict[self.currentText()]["port"]
-    
 
+class LabeledTextbox(QtWidgets.QWidget):
+    def __init__(self, label, text='', setbutton=False):
+        super().__init__()
+        
+        self.layout = QtWidgets.QHBoxLayout()
+        self.layout.setContentsMargins(QtCore.QMargins(0, 0, 0, 0))
+        self.setLayout(self.layout)
+
+        label = QtWidgets.QLabel(label)
+        self.layout.addWidget(label)
+
+        self.textbox = QtWidgets.QLineEdit(str(text))
+        self.layout.addWidget(self.textbox)
+
+        if setbutton:
+            self.SetButton = QtWidgets.QPushButton('Set')
+            self.layout.addWidget(self.SetButton)
+
+    def GetText(self):
+        return self.textbox.text()
+
+    def SetText(self, text):
+        self.textbox.setText(text)
+
+class BaudRateDialog(QtWidgets.QInputDialog):
+    def __init__(self):
+        super().__init__()
+        self.setFixedSize(400, 200)
+
+        # self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+        # set initials values to widgets
+
+  
 if __name__ == "__main__":
     current_port = 51234
     app = QtWidgets.QApplication([])
-    player = SerialGUI()
+    console = SerialGUI()
+    # console = BaudRateDialog()
     screensize = app.desktop().availableGeometry().size()
     # player.resize(screensize)
-    player.show()
+    console.show()
 
     exit(app.exec_())
     
