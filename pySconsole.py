@@ -138,6 +138,7 @@ class SerialGUI(QtWidgets.QWidget):
                 self.serth = SerialCom(p, b, self.serialInput_q, self.serialOut_q)   # Start serial thread
                 self.serth.Start()
             self.led_indicator.setChecked(True)
+            self.history_log.current_device = p
             self.connctButton.setText("Disconnect")
         else:
             if self.serth.connected:
@@ -318,7 +319,7 @@ class LedIndicator(QtWidgets.QAbstractButton):
     def offColor2(self, color):
         self.off_color_2 = color
 
-class BaudRateCombo(QtWidgets.QComboBox): #TODO: context menu for adding items
+class BaudRateCombo(QtWidgets.QComboBox):
     def __init__(self) -> None:
         super().__init__()
         self.setEditable(False)
@@ -351,12 +352,26 @@ class HistoryList(QtWidgets.QListWidget):
         super().__init__()
         self.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
         self.setMouseTracking(True)
-        self.itemEntered.connect(self.__showToolTip)
+        self.itemEntered.connect(self.__addToolTip)
+        self.items_tooltip_info_dict = dict()
+        self.current_device = ""
     
     def keyPressEvent(self, ev):
         super().keyPressEvent(ev)
         if ev.key() in (QtCore.Qt.Key_Enter, QtCore.Qt.Key_Return):
             self.returnPressed.emit()
+
+    def event(self, e: QtCore.QEvent) -> bool:
+        if e.type() == QtCore.QEvent.ToolTip:
+            if not self.selectedItems():
+                QtWidgets.QToolTip.hideText()
+                return True
+            else:
+                index = self.indexFromItem(self.currentItem()).row()
+                info = json.dumps(self.items_tooltip_info_dict[index], indent=4)
+                QtWidgets.QToolTip.showText(e.globalPos(),info)
+                e.accept()
+        return super().event(e)
 
     def addItem(self, aitem) -> None:
         item = ''
@@ -371,19 +386,12 @@ class HistoryList(QtWidgets.QListWidget):
         self.setItemWidget(item, QtWidgets.QWidget())
         super().addItem(item)
 
-    def __showToolTip(self, item: QtWidgets.QListWidgetItem):
+    def __addToolTip(self, item: QtWidgets.QListWidgetItem):
         text = item.text()
-        text_width = self.fontMetrics().boundingRect(text).width()
-        width = self.width()
-        info = {"time":"1234", "output":"blah"}
-        info = json.dumps(info, indent=4)
-        # item.setToolTip(text)
-        item.setToolTip(info)
-        # if text_width > width:
-        #     item.setToolTip(text)
-        # else:
-        #     item.setToolTip('')
-        
+        info = {"time":str(time.time()), "entry":text, "device": self.current_device}
+        index = self.indexFromItem(item).row()
+        self.items_tooltip_info_dict[index] = info
+         
 class SerialPortCombo(QtWidgets.QComboBox):
     def __init__(self) -> None:
         super().__init__()
