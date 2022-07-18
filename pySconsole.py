@@ -138,7 +138,7 @@ class SerialGUI(QtWidgets.QWidget):
                 self.serth = SerialCom(p, b, self.serialInput_q, self.serialOut_q)   # Start serial thread
                 self.serth.Start()
             self.led_indicator.setChecked(True)
-            self.history_log.current_device = p
+            self.history_log.current_device = self.portComboBox.getCurrentPortAndDesc()
             self.connctButton.setText("Disconnect")
         else:
             if self.serth.connected:
@@ -418,6 +418,9 @@ class SerialPortCombo(QtWidgets.QComboBox):
 
     def getCurrentPort(self):
         return self.portDict[self.currentText()]["port"]
+
+    def getCurrentPortAndDesc(self):
+        return self.portDict[self.currentText()]["port"] + ":" + self.portDict[self.currentText()]["desc"] 
 
 class LabeledTextbox(QtWidgets.QWidget):
     def __init__(self, label, text='', setbutton=False):
