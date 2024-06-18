@@ -5,8 +5,6 @@ import json
 import queue, threading
 import serial.tools.list_ports
 
-hexmode     = False
-SER_TIMEOUT = 0.1
 class SerialGUI(QtWidgets.QWidget):
     def __init__(self):
         super().__init__()
@@ -15,6 +13,14 @@ class SerialGUI(QtWidgets.QWidget):
 
     def closeEvent(self, event):
         super().closeEvent(event)
+
+    def contextMenuEvent(self, event):
+        menu = QtWidgets.QMenu(self)
+        quitAction = menu.addAction("Quit")
+        historyAction = menu.addAction("Show History")
+        action = menu.exec_(self.mapToGlobal(event.pos()))
+        if action == quitAction:
+            QtWidgets.QApplication().quit()
 
     def __init_ui(self):
         self.serialInput_q, self.serialOut_q = queue.Queue(), queue.Queue() 
@@ -55,7 +61,6 @@ class SerialGUI(QtWidgets.QWidget):
         self._console_t = self.ConsoleOutput(self.serth, self.serial_output, self.serialOut_q)
         self._console_t.data_append.connect(self.serial_output.append)
         self._console_t.start()
-
 
         #set history log
         self.history_log = HistoryList()
@@ -110,6 +115,24 @@ class SerialGUI(QtWidgets.QWidget):
     def history_item_selected(self):
         self.line_edit.setText(self.history_log.currentItem().text())
 
+    def port_connect(self):
+        if self.connctButton.text() == "Connect": #TODO: fix issue of serial errror on reconection
+            p = self.portComboBox.getCurrentPort()
+            b = int(self.baudComboBox.currentText())
+            if not self.thread_status:
+                self.thread_status = True
+                self.serth = SerialCom(p, b, self.serialInput_q, self.serialOut_q)   # Start serial thread
+                self.serth.Start()
+            self.led_indicator.setChecked(True)
+            self.history_log.current_device = self.portComboBox.getCurrentPortAndDesc()
+            self.connctButton.setText("Disconnect")
+        else:
+            if self.serth.connected:
+                self.serth.Stop()
+                self.thread_status = False
+            self.connctButton.setText("Connect")
+            self.led_indicator.setChecked(False)
+
     class ConsoleOutput(QtCore.QThread):
         data_append = QtCore.pyqtSignal(object)
         def __init__(self, serial_dev, output, qoutput) -> None:
@@ -129,50 +152,9 @@ class SerialGUI(QtWidgets.QWidget):
                 except:
                     continue
 
-    def port_connect(self):
-        if self.connctButton.text() == "Connect": #TODO: fix issue of serial errror on reconection
-            p = self.portComboBox.getCurrentPort()
-            b = int(self.baudComboBox.currentText())
-            if not self.thread_status:
-                self.thread_status = True
-                self.serth = SerialCom(p, b, self.serialInput_q, self.serialOut_q)   # Start serial thread
-                self.serth.Start()
-            self.led_indicator.setChecked(True)
-            self.history_log.current_device = self.portComboBox.getCurrentPortAndDesc()
-            self.connctButton.setText("Disconnect")
-        else:
-            if self.serth.connected:
-                self.serth.Stop()
-                self.thread_status = False
-            self.connctButton.setText("Connect")
-            self.led_indicator.setChecked(False)
-
-# Convert a string to bytes
-def str_bytes(s):
-    return s.encode('latin-1')
-     
-# Convert bytes to string
-def bytes_str(d):
-    return d if type(d) is str else "".join([chr(b) for b in d])
-     
-# Return hexadecimal values of data
-def hexdump(data):
-    return " ".join(["%02X" % ord(b) for b in data])
- 
-# Return a string with high-bit chars replaced by hex values
-def textdump(data):
-    return "".join(["[%02X]" % ord(b) if b>'\x7e' else b for b in data])
-     
-# Display incoming serial data
-def display(s):
-    if not hexmode:
-        print(textdump(str(s)))
-        # sys.stdout.write(textdump(str(s)))
-    else:
-        print(hexdump(s) + ' ')
-
 # Thread to handle incoming & outgoing serial data
 class SerialCom:
+    SER_TIMEOUT = 0.1
     def __init__(self, portname, baudrate, serialInput, serialOut): # Initialise with serial port details
         super().__init__()
         self.portname, self.baudrate = portname, baudrate
@@ -187,6 +169,9 @@ class SerialCom:
         self._send_thread = threading.Thread(target=self.sendData, daemon=True)
         self._read_thread.start()
         self._send_thread.start()
+        self.__hexmode     = False
+
+
         
     def sendData(self):                   # Write outgoing data to serial port if open
         while self._loop:
@@ -201,17 +186,17 @@ class SerialCom:
             while self.running and self.ser:
                 s = self.ser.readline()
                 if s:                                       # Get data from serial port
-                    data = bytes_str(s)               # ..and convert to string
+                    data = self.__bytes_str(s)               # ..and convert to string
                     if data != '':
                         self.rxq.put(data)               # ..and convert to string
-                    display(s)
+                    self.__display(s)
          
     def Start(self):                          # Run serial reader thread
         print("Opening %s at %u baud %s" % (self.portname, self.baudrate,
-              "(hex display)" if hexmode else ""))
+              "(hex display)" if self.__hexmode else ""))
         try:
             self.ser = serial.Serial(port=self.portname, baudrate=self.baudrate)
-            time.sleep(SER_TIMEOUT*1.2)
+            time.sleep(self.SER_TIMEOUT*1.2)
             self.ser.flushInput()
             self.running = True
             print(1)
@@ -230,7 +215,31 @@ class SerialCom:
         self.connected = False
         self.ser.close()
         self.ser = None
+    
+        # Convert a string to bytes
+    def __str_bytes(self, s):
+        return s.encode('latin-1')
         
+    # Convert bytes to string
+    def __bytes_str(self, d):
+        return d if type(d) is str else "".join([chr(b) for b in d])
+        
+    # Return hexadecimal values of data
+    def __hexdump(self, data):
+        return " ".join(["%02X" % ord(b) for b in data])
+    
+    # Return a string with high-bit chars replaced by hex values
+    def __textdump(self, data):
+        return "".join(["[%02X]" % ord(b) if b>'\x7e' else b for b in data])
+        
+    # Display incoming serial data
+    def __display(self, s):
+        if not self.__hexmode:
+            print(self.__textdump(str(s)))
+            # sys.stdout.write(textdump(str(s)))
+        else:
+            print(self.__hexdump(s) + ' ')
+
 class LedIndicator(QtWidgets.QAbstractButton):
     scaledSize = 1000.0
 
@@ -328,7 +337,6 @@ class BaudRateCombo(QtWidgets.QComboBox):
 
     def contextMenuEvent(self,event):
         super().contextMenuEvent(event)
-        print("Right Button Clicked")
         entry = self.getCustomBaud()
         if entry:
             self.baudlist.append(entry)
@@ -336,15 +344,13 @@ class BaudRateCombo(QtWidgets.QComboBox):
             self.clear()
             self.addItems(self.baudlist)
     
-    def getCustomBaud(self): #TODO: modify for adjusting title
-    #   num,ok = QtWidgets.QInputDialog.getInt(self,"Custom BaudRate","Enter a BaudRate value")
-        num,ok = BaudRateDialog().getInt(self,"Custom BaudRate           ","Enter a BaudRate value")
+    def getCustomBaud(self):
+        num,ok = QtWidgets.QInputDialog.getInt(self,"Add Entry","Enter a BaudRate value", min=0)
 		
         if ok:
             return str(num)
         else:
             return ""
-
 
 class HistoryList(QtWidgets.QListWidget):
     returnPressed = QtCore.pyqtSignal()
@@ -445,14 +451,6 @@ class LabeledTextbox(QtWidgets.QWidget):
 
     def SetText(self, text):
         self.textbox.setText(text)
-
-class BaudRateDialog(QtWidgets.QInputDialog):
-    def __init__(self):
-        super().__init__()
-        self.setFixedSize(400, 200)
-
-        # self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
-        # set initials values to widgets
 
   
 if __name__ == "__main__":
